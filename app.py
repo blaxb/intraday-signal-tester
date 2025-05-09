@@ -36,6 +36,7 @@ tab1, tab2, tab3 = st.tabs(["📊 Manual Forecast", "🧪 Strategy Tester", "�
 
 # --- Manual Forecast ---
 with tab1:
+    st.subheader("📊 Manual Forecast")
     times = []
     start = datetime.combine(datetime.today(), time(9, 30))
     end = datetime.combine(datetime.today(), time(16, 0))
@@ -44,9 +45,9 @@ with tab1:
         start += timedelta(minutes=5)
 
     time_options = ["Any time"] + [t.strftime("%H:%M") for t in times]
-    selected_time = st.selectbox("Choose a time of day:", time_options)
+    selected_time = st.selectbox("Choose a time of day:", time_options, key="manual_time")
 
-    selected_day = st.selectbox("Choose a weekday:", ["Any day", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
+    selected_day = st.selectbox("Choose a weekday:", ["Any day", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"], key="manual_day")
     weekday_map = {"Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3, "Friday": 4}
 
     rsi_min, rsi_max = st.slider("RSI range:", 0, 100, (0, 100))
@@ -55,60 +56,53 @@ with tab1:
     signal_min, signal_max = st.slider("MACD Signal range:", float(df["MACD_signal"].min()), float(df["MACD_signal"].max()), (float(df["MACD_signal"].min()), float(df["MACD_signal"].max())))
     body_pct_min, body_pct_max = st.slider("Candle Body % Range (Price Action):", float(df["Body_pct"].min()), float(df["Body_pct"].max()), (float(df["Body_pct"].min()), float(df["Body_pct"].max())))
 
+    if st.button("Get Historical Forecast", key="manual_button"):
+        st.write("Manual forecast logic coming soon...")
+
 # --- Strategy Tester ---
 with tab2:
-    if st.button("Get Historical Forecast"):
-        returns_5, returns_15, returns_60, match_indices = [], [], [], []
+    st.subheader("🧪 Strategy Tester")
+    st.caption("Uses filters from Manual Forecast tab")
+    horizon = st.selectbox("Select forecast horizon:", ["5 minutes", "15 minutes", "60 minutes"], key="forecast_horizon")
 
-        for date in df["Datetime"].dt.date.unique():
-            if selected_day != "Any day" and datetime.strptime(str(date), "%Y-%m-%d").weekday() != weekday_map[selected_day]:
-                continue
+    if st.button("Run Strategy Tester"):
+        horizon_map = {"5 minutes": 1, "15 minutes": 3, "60 minutes": 12}
+        horizon_shift = horizon_map[horizon]
 
-            day_df = df[df["Datetime"].dt.date == date].copy()
-            current_rows = day_df.index if selected_time == "Any time" else day_df[day_df["Datetime"].dt.strftime("%H:%M") == selected_time].index
+        returns = []
+        match_indices = []
 
-            for idx in current_rows:
-                try:
-                    rsi_now = df.loc[idx, "RSI"]
-                    volume_now = df.loc[idx, "Volume"]
-                    macd_now = df.loc[idx, "MACD"]
-                    signal_now = df.loc[idx, "MACD_signal"]
-                    body_pct_now = df.loc[idx, "Body_pct"]
-                    price_now = df.loc[idx, "Close"]
+        for idx in range(len(df) - horizon_shift):
+            rsi_now = df.loc[idx, "RSI"]
+            volume_now = df.loc[idx, "Volume"]
+            macd_now = df.loc[idx, "MACD"]
+            signal_now = df.loc[idx, "MACD_signal"]
+            body_pct_now = df.loc[idx, "Body_pct"]
+            price_now = df.loc[idx, "Close"]
 
-                    if pd.isna(rsi_now) or not (rsi_min <= rsi_now <= rsi_max): continue
-                    if not (volume_min <= volume_now <= volume_max): continue
-                    if pd.isna(macd_now) or not (macd_min <= macd_now <= macd_max): continue
-                    if pd.isna(signal_now) or not (signal_min <= signal_now <= signal_max): continue
-                    if pd.isna(body_pct_now) or not (body_pct_min <= body_pct_now <= body_pct_max): continue
+            if pd.isna(rsi_now) or not (rsi_min <= rsi_now <= rsi_max): continue
+            if not (volume_min <= volume_now <= volume_max): continue
+            if pd.isna(macd_now) or not (macd_min <= macd_now <= macd_max): continue
+            if pd.isna(signal_now) or not (signal_min <= signal_now <= signal_max): continue
+            if pd.isna(body_pct_now) or not (body_pct_min <= body_pct_now <= body_pct_max): continue
 
-                    price_5 = df.iloc[idx + 1]["Close"]
-                    price_15 = df.iloc[idx + 3]["Close"]
-                    price_60 = df.iloc[idx + 12]["Close"]
-
-                    returns_5.append(((price_5 - price_now) / price_now) * 100)
-                    returns_15.append(((price_15 - price_now) / price_now) * 100)
-                    returns_60.append(((price_60 - price_now) / price_now) * 100)
-                    match_indices.append(idx)
-                except IndexError:
-                    continue
+            price_future = df.loc[idx + horizon_shift, "Close"]
+            returns.append(((price_future - price_now) / price_now) * 100)
+            match_indices.append(idx)
 
         st.write(f"✅ Matches found: {len(match_indices)}")
 
-        if returns_5:
-            st.success(f"📊 Average 5-min return: **{round(sum(returns_5)/len(returns_5), 3)}%**")
-            st.success(f"📊 Average 15-min return: **{round(sum(returns_15)/len(returns_15), 3)}%**")
-            st.success(f"📊 Average 60-min return: **{round(sum(returns_60)/len(returns_60), 3)}%**")
-            win_trades = sum(1 for r in returns_5 if r > 0)
-            st.subheader("📈 Strategy Tester Results (5-min horizon)")
-            st.markdown(f"- **Trades tested:** {len(returns_5)}")
-            st.markdown(f"- **Win rate:** {round((win_trades / len(returns_5)) * 100, 2)}%")
-            st.markdown(f"- **Best trade:** {round(max(returns_5), 3)}%")
-            st.markdown(f"- **Worst trade:** {round(min(returns_5), 3)}%")
-            st.markdown(f"- **Total return if all trades were taken:** {round(sum(returns_5), 3)}%")
+        if returns:
+            avg_return = round(sum(returns) / len(returns), 3)
+            st.success(f"📊 Average return after {horizon}: **{avg_return}%**")
+            win_trades = sum(1 for r in returns if r > 0)
+            st.markdown(f"- **Win rate:** {round((win_trades / len(returns)) * 100, 2)}%")
+            st.markdown(f"- **Best trade:** {round(max(returns), 3)}%")
+            st.markdown(f"- **Worst trade:** {round(min(returns), 3)}%")
+            st.markdown(f"- **Total return if all trades were taken:** {round(sum(returns), 3)}%")
 
             # --- Risk-Reward Analysis ---
-            reward_list = returns_5
+            reward_list = returns
             risk_list = [abs(df.loc[idx, "Body_pct"]) for idx in match_indices]
             rr_list = [r / risk for r, risk in zip(reward_list, risk_list) if risk > 0]
             avg_rr = round(sum(rr_list) / len(rr_list), 2) if rr_list else 0
@@ -127,6 +121,7 @@ with tab2:
             st.markdown(f"- **Expectancy per trade:** {expectancy}%")
         else:
             st.warning("Not enough data for those filters.")
+
 
 # --- Top 5 Setups ---
 with tab3:
