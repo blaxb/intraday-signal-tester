@@ -126,30 +126,37 @@ with tab2:
 # --- Top 5 Setups ---
 with tab3:
     st.subheader("🔍 Top 5 Setups for This Stock")
+
+    setup_horizon = st.selectbox("Choose time horizon for return calculation:", ["5 minutes", "15 minutes", "60 minutes"], key="top5_horizon")
+    shift_map = {"5 minutes": 1, "15 minutes": 3, "60 minutes": 12}
+    shift_n = shift_map[setup_horizon]
+
     volume_min = int(df["Volume"].min())
     volume_max = int(df["Volume"].max())
     volume_bins = range(volume_min, volume_max + 200_000, 200_000)
 
-    df["RSI_bin"] = pd.cut(df["RSI"], bins=[20, 30, 40, 50, 60, 70, 80])
+    df["RSI_bin"] = pd.cut(df["RSI"], bins=range(0, 105, 5))
     df["MACD_bin"] = pd.qcut(df["MACD"].dropna(), 4, duplicates='drop')
     df["Volume_bin"] = pd.cut(df["Volume"], bins=volume_bins)
     df["Body_bin"] = pd.qcut(df["Body_pct"].dropna(), 4, duplicates='drop')
 
     df = df.dropna(subset=["RSI_bin", "MACD_bin", "Volume_bin", "Body_bin"])
-    df["ret_5"] = df["Close"].shift(-1)
-    df["ret_5_pct"] = ((df["ret_5"] - df["Close"]) / df["Close"]) * 100
+    df["future_close"] = df["Close"].shift(-shift_n)
+    df["ret_horizon"] = ((df["future_close"] - df["Close"]) / df["Close"]) * 100
 
     agg_df = (
         df.groupby(["RSI_bin", "MACD_bin", "Volume_bin", "Body_bin"])
         .agg(
-            trades=("ret_5_pct", "count"),
-            avg_return=("ret_5_pct", "mean"),
-            win_rate=("ret_5_pct", lambda x: (x > 0).mean() * 100)
+            trades=("ret_horizon", "count"),
+            avg_return=("ret_horizon", "mean"),
+            win_rate=("ret_horizon", lambda x: (x > 0).mean() * 100)
         )
         .reset_index()
     )
 
-    top_strategies = agg_df[agg_df["trades"] >= 10].sort_values("win_rate", ascending=False).head(5)
+    top_strategies = agg_df[
+        (agg_df["trades"] >= 10) & (agg_df["avg_return"] >= 0.5)
+    ].sort_values("win_rate", ascending=False).head(5)
 
     if not top_strategies.empty:
         for _, row in top_strategies.iterrows():
@@ -157,7 +164,7 @@ with tab3:
                 f"RSI {row['RSI_bin']}, MACD {row['MACD_bin'].left:.2f}-{row['MACD_bin'].right:.2f}, "
                 f"Volume {int(row['Volume_bin'].left):,}-{int(row['Volume_bin'].right):,}, "
                 f"Body {row['Body_bin'].left:.2f}-{row['Body_bin'].right:.2f} "
-                f"\u2192 \U0001F4C8 Win Rate: **{row['win_rate']:.2f}%** | Avg Return: **{row['avg_return']:.3f}%** over {row['trades']} trades"
+                f"→ 📈 Win Rate: **{row['win_rate']:.2f}%** | Avg Return: **{row['avg_return']:.3f}%** over {row['trades']} trades"
             )
     else:
-        st.warning("No strong setups found based on current data.")
+        st.warning("No strong setups found with ≥ 0.50% return and ≥ 10 trades.")
