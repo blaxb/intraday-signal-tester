@@ -155,7 +155,7 @@ with tab3:
     )
 
     top_strategies = agg_df[
-        (agg_df["trades"] >= 10) & (agg_df["avg_return"] >= 0.5)
+        (agg_df["trades"] >= 10) & (agg_df["avg_return"] >= 0.25)
     ].sort_values("win_rate", ascending=False).head(5)
 
     if not top_strategies.empty:
@@ -167,4 +167,4 @@ with tab3:
                 f"→ 📈 Win Rate: **{row['win_rate']:.2f}%** | Avg Return: **{row['avg_return']:.3f}%** over {row['trades']} trades"
             )
     else:
-        st.warning("No strong setups found with ≥ 0.50% return and ≥ 10 trades.")
+        st.warning("No strong setups found with ≥ 0.250% return and ≥ 10 trades.")
