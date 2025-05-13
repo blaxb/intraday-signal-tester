@@ -57,7 +57,40 @@ with tab1:
     body_pct_min, body_pct_max = st.slider("Candle Body % Range (Price Action):", float(df["Body_pct"].min()), float(df["Body_pct"].max()), (float(df["Body_pct"].min()), float(df["Body_pct"].max())))
 
     if st.button("Get Historical Forecast", key="manual_button"):
-        st.write("Manual forecast logic coming soon...")
+        matches = []
+
+        for idx in range(len(df) - 1):
+            timestamp = df.loc[idx, "Datetime"]
+            if selected_time != "Any time" and timestamp.strftime("%H:%M") != selected_time:
+                continue
+            if selected_day != "Any day" and timestamp.weekday() != weekday_map[selected_day]:
+                continue
+
+            rsi_now = df.loc[idx, "RSI"]
+            volume_now = df.loc[idx, "Volume"]
+            macd_now = df.loc[idx, "MACD"]
+            signal_now = df.loc[idx, "MACD_signal"]
+            body_pct_now = df.loc[idx, "Body_pct"]
+
+            if pd.isna(rsi_now) or not (rsi_min <= rsi_now <= rsi_max): continue
+            if pd.isna(volume_now) or not (volume_min <= volume_now <= volume_max): continue
+            if pd.isna(macd_now) or not (macd_min <= macd_now <= macd_max): continue
+            if pd.isna(signal_now) or not (signal_min <= signal_now <= signal_max): continue
+            if pd.isna(body_pct_now) or not (body_pct_min <= body_pct_now <= body_pct_max): continue
+
+            close_now = df.loc[idx, "Close"]
+            close_15 = df.loc[idx + 3, "Close"] if idx + 3 < len(df) else None
+
+            if close_15:
+                ret_15 = round((close_15 - close_now) / close_now * 100, 2)
+                matches.append(ret_15)
+
+        if matches:
+            st.success(f"📊 Matches found: {len(matches)}")
+            st.success(f"📈 Average 15-min return: {round(sum(matches) / len(matches), 3)}%")
+        else:
+            st.warning("No matches found for those criteria.")
+
 
 # --- Strategy Tester ---
 with tab2:
